@@ -18,7 +18,6 @@ intercept = model.intercept_
 xx = np.linspace(x_min, x_max, 100)
 yy = (-1 / coef[0][1]) * (coef[0][0] * xx + intercept)
 
-# 绘制决策边界
 plt.plot(xx, yy)
 plt.scatter(X[:3], y[:3], c="blue")
 plt.scatter(X[3:], y[3:], c="red")
