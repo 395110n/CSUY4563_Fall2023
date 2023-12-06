@@ -21,8 +21,8 @@ train_prompts = pd.read_csv(data + "train_prompts.csv") # ['prompt_id', 'prompt_
 test_essays = pd.read_csv(data + "test_essays.csv")
 text_data = []
 tokens = []
-for id, row in train_essays.iterrows():
-    text_data.append(row["text"])
+
+text_data += train_essays["text"].tolist()
 
 text_data+= train_prompts["instructions"].tolist()
 
