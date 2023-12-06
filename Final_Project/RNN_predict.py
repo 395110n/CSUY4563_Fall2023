@@ -10,7 +10,7 @@ import random
 step_size = 20
 
 
-data = "C:\\Users\\User\\NYU\\CSUY 4563\\data\\"
+data = data_repo
 train_essays = pd.read_csv(data + "train_essays.csv")   # ['id', 'prompt_id', 'text', 'generated']
 train_prompts = pd.read_csv(data + "train_prompts.csv") # ['prompt_id', 'prompt_name', 'instructions', 'source_text', 'one_hot_prompts']
 test_essays = pd.read_csv(data + "test_essays.csv")
