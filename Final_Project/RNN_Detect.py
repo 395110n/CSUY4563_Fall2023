@@ -10,7 +10,7 @@ import torch.nn.utils.rnn as rnn_utils
 import math
 import matplotlib.pyplot as plt
 
-data = "C:\\Users\\User\\NYU\\CSUY 4563\\data\\"
+data = data_repo
 step_size = 20
 batch_size = 1
 num_hiddens = 512
