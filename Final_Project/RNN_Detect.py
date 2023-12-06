@@ -10,7 +10,7 @@ import torch.nn.utils.rnn as rnn_utils
 import math
 import matplotlib.pyplot as plt
 
-data = data_repo
+data = "C:\\Users\\User\\NYU\\CSUY 4563\\data\\"
 step_size = 20
 batch_size = 1
 num_hiddens = 512
@@ -36,18 +36,23 @@ ordered_dict = OrderedDict(sorted_by_freq_tuples)
 Vocab = torchtext.vocab.vocab(ordered_dict, specials=["<unk>"])
 tokens = tokenizer(train_essays.iloc[0, 2])
 
-one_hot_prompts = []
-for num in range(2):
-    prompt = train_prompts.iloc[num, 2]
-    tokens = tokenizer(prompt)
-    if (len(tokens) % step_size) != 0:
-        tokens += ["<unk>"] * (step_size - len(tokens) % step_size)
-    num_elem = len(tokens) // step_size
-    prompt_indices = [Vocab[token] for token in tokens]
-    prompt_elements = torch.tensor([prompt_indices[i * step_size: (i + 1) * step_size] for i in range(num_elem)])
-    prompt_elements_one_hot = F.one_hot(prompt_elements, len(Vocab))
-    one_hot_prompts.append(prompt_elements_one_hot)
+def ont_hot_encoding(df, column, step_size):
+    df["one_hot"] = None
+    for id, row in df.iterrows():
+        text = row[column]
+        tokens = tokenizer(text)
+        if (len(tokens) % step_size) != 0:
+            tokens += ["<unk>"] * (step_size - len(tokens) % step_size)
+        num_elem = len(tokens) // step_size
+        indices = [Vocab[token] for token in tokens]
+        elements = torch.tensor([indices[i * step_size: (i + 1) * step_size] for i in range(num_elem)])
+        df.at[id, "one_hot"] = elements.numpy()
 
+ont_hot_encoding(train_prompts, "instructions", step_size)
+ont_hot_encoding(train_essays, 'text', step_size)
+train_prompts.at[0, "one_hot"] = F.one_hot(torch.tensor(train_prompts.iloc[0, 4]), len(Vocab)).numpy()
+train_prompts.at[1, "one_hot"] = F.one_hot(torch.tensor(train_prompts.iloc[1, 4]), len(Vocab)).numpy()
+print("end encoding!----------------------------------------------")
 
 class ArticleDataSet(Dataset):
     def __init__(self, data, step_size, vocab, tokenizer):
@@ -61,15 +66,8 @@ class ArticleDataSet(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        text = self.data.iloc[index, 2]
-        tokens = self.tokenizer(text)
-        if (len(tokens) % self.step_size) != 0:
-            tokens += ["<unk>"] * (self.step_size - len(tokens) % self.step_size)
-        article_indices = [self.vocab[token] for token in tokens]
-        num_elem = len(tokens) // self.step_size
-        article_batches = torch.tensor([article_indices[i * self.step_size: (i + 1) * self.step_size] for i in range(num_elem)])
-        article_batches_one_hot = F.one_hot(article_batches, len(Vocab))
-        return (article_batches_one_hot, self.data.iloc[index, 1]), (self.encoder[self.data.iloc[index, 3]]).to(torch.device("cuda:0"))
+        one_hot = F.one_hot(torch.tensor(self.data.iloc[index, 4]), len(Vocab)).to(torch.device("cuda:0"))
+        return (one_hot, self.data.iloc[index, 1]), (self.encoder[self.data.iloc[index, 3]]).to(torch.device("cuda:0"))
 
 def rnn(X, params, state):
     W_xh, W_hh, b_h = params
@@ -92,8 +90,10 @@ def get_params(vocab_size, num_hiddens, device):
     return params
 
 
-class RNNModel:
+class RNNModel(nn.Module):
     def __init__(self, vocab_size, step_size, num_hiddens, device, get_params, forward_fn):
+        super(RNNModel, self).__init__()
+        self.fc = nn.Linear(10, 1)
         self.vocab_size, self.num_hiddens = vocab_size, num_hiddens
         self.params = get_params(vocab_size, num_hiddens, device)
         self.step_size = step_size
@@ -101,10 +101,10 @@ class RNNModel:
         self.forward_fn = forward_fn
         self.fc = nn.Linear(num_hiddens, 2, device=device)
         
-
-
+        
     def get_init_state_per_batch(self, prompt_id):
-        prompt_elements_one_hot = one_hot_prompts[prompt_id].to(self.device)
+        prompt_elements_one_hot = torch.tensor(train_prompts.iloc[prompt_id, 4].item()).to(self.device)
+        
         state = torch.zeros((step_size, num_hiddens)).to(torch.device("cuda:0"))
         for data in prompt_elements_one_hot:
             state = rnn(data.to(torch.device("cuda:0")), self.params, state)
@@ -116,50 +116,55 @@ class RNNModel:
         for data in text_data:
             state = self.forward_fn(data, self.params, state).to(torch.device("cuda:0"))
         state_flatten = state.mean(dim=0, keepdim=True)
-        return self.fc(state_flatten)
+        result = self.fc(state_flatten)
+        result_soft_max = nn.functional.softmax(result, dim=1)
+        return result_soft_max
 
 
 num_hiddens = 512
 net = RNNModel(len(Vocab), step_size, num_hiddens, torch.device("cuda:0"), get_params, rnn)
 
-def grad_clipping(net, theta):
-    params = net.params
-    norm = torch.sqrt(sum(torch.sum((p.grad ** 2)) for p in params))
-    if norm > theta:
-        for param in params:
-            param.grad[:] *= theta / norm
 
 def train_epoch(net, train_iter, loss, updater, device):
-    timer = d2l.Timer()
-    metric = d2l.Accumulator(2)  # 训练损失之和,词元数量
+    custom_params = [param for param in net.params]
+    fully_connected_params = list(net.fc.parameters())
+    all_params = custom_params + fully_connected_params
+    metric = []
     for X, Y in train_iter:
         y_hat = net(X).to(device)
         l = loss(y_hat, Y).to(device)
         l.backward()
-        grad_clipping(net, 1)
+        torch.nn.utils.clip_grad_norm_(all_params, max_norm=2)
         updater.step()
-        metric.add(l * Y.numel(), Y.numel())
-    return math.exp(metric[0] / metric[1]), metric[1] / timer.stop()
+        metric.append(l.item())
+    return metric[-1]
 
 def train(net, train_iter, lr, num_epochs, device):
     loss = nn.CrossEntropyLoss()
     animator = d2l.Animator(xlabel='epoch', ylabel='perplexity',
                             legend=['train'], xlim=[10, num_epochs])
-    updater = torch.optim.SGD(net.params, lr)
+    custom_params = [param for param in net.params]  # Assuming model.params is a list of custom parameters
+    fully_connected_params = list(net.fc.parameters())
+    all_params = custom_params + fully_connected_params
+    updater = torch.optim.SGD(all_params, lr)
     for epoch in range(num_epochs):
-        ppl, speed = train_epoch(
+        ppl= train_epoch(
             net, train_iter, loss, updater, device)
         if (epoch + 1) % 10 == 0:
 
             animator.add(epoch + 1, [ppl])
         print("epoch: ", epoch, " ppl: ", ppl)
-    print(f'perplexity {ppl:.1f}, {speed:.1f} token/second {str(device)}')
+    
 
 dataSet = ArticleDataSet(train_essays, step_size, Vocab, tokenizer)
 train_iter = DataLoader(dataSet, batch_size=1, shuffle=True)
-num_epochs, lr = 50, 1
+num_epochs, lr = 50, 1e5
 train(net, train_iter, lr, num_epochs, torch.device("cuda:0"))
+
+torch.save(net.state_dict(), data+"model")
+
 plt.show()
+
 
 
 
