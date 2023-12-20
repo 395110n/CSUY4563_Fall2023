@@ -55,18 +55,6 @@ class Vocab:
     def unk(self):  # Index for the unknown token
         return self.token_to_idx['<unk>']
 
-def get_tokens_and_segments(tokens_a, tokens_b=None):
-    """Get tokens of the BERT input sequence and their segment IDs.
-
-    Defined in :numref:`sec_bert`"""
-    tokens = ['<cls>'] + tokens_a + ['<sep>']
-    # 0 and 1 are marking segment A and B, respectively
-    segments = [0] * (len(tokens_a) + 2)
-    if tokens_b is not None:
-        tokens += tokens_b + ['<sep>']
-        segments += [1] * (len(tokens_b) + 1)
-    return tokens, segments
-
 
 class TransformerEncoderBlock(nn.Module):
     def __init__(self, num_hiddens, ffn_num_hiddens, num_heads, dropout, use_bias=False):
@@ -111,8 +99,8 @@ def truncate_pad(line, num_steps, padding_token):
 
     Defined in :numref:`sec_utils`"""
     if len(line) > num_steps:
-        return line[:num_steps]  # Truncate
-    return line + [padding_token] * (num_steps - len(line))  # Pad
+        return ['<cls>'] +line[:num_steps]+ ['<sep>'] # Truncate
+    return ['<cls>'] + line + [padding_token] * (num_steps - len(line)) + ['<sep>']  # Pad
 
 
 
@@ -186,8 +174,9 @@ vocab = Vocab(tokenized_text,min_freq=5, reserved_tokens=[
 
 # Step 2: Convert Text to Indices and Normalize Lengths
 max_len = 512 
-indices = [vocab[token] for token in tokenized_text]
-padded_indices = [truncate_pad(line, max_len, vocab['<pad>']) for line in indices]
+padded_tokens = [truncate_pad(line, 510, '<pad>') for line in tokenized_text]
+padded_indices = [vocab[token] for token in padded_tokens]
+
 
 features = torch.tensor(padded_indices)
 labels = torch.tensor(train_essays['generated'].values)  # Assuming 'generated' is the target column
