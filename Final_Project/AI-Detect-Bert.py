@@ -19,7 +19,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
 
-data = "C:\\Users\\User\\NYU\\CSUY 4563\\data\\"
+data = "..\\CSUY 4563\\data\\"
 
 class Vocab:
     """Vocabulary for text."""
