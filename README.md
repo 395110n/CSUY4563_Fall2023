@@ -3,3 +3,6 @@ Xuhang Contributed the most to RNN detect, while Zheng contributed the most to B
 
 Final Presentation Vedio: 
 https://www.youtube.com/watch?v=LTVD8fCQaDI
+
+Final Project in Kaggle:
+https://www.kaggle.com/code/jamalcao/ai-detect
